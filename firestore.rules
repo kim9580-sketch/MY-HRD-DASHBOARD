@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // 데이터 모델 정의 (Assumed Data Model)
+    // ===============================================================
+    // Collection: sales_data
+    // Fields:
+    //   - orderId: string (required)
+    //   - productName: string (required)
+    //   - price: number (required)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - paymentMethod: string (required)
+    
+    // ===============================================================
+    // 헬퍼 함수 (Helper Functions)
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == 'kim1388218@gmail.com' && request.auth.token.email_verified == true);
+    }
+
+    function isOwner(data) {
+      return isAuthenticated() && data.uid == request.auth.uid;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['orderId', 'productName', 'price', 'date', 'paymentMethod', 'uid']) &&
+             data.orderId is string && data.orderId.size() > 0 &&
+             data.productName is string && data.productName.size() > 0 &&
+             data.price is number && data.price >= 0 &&
+             data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             data.paymentMethod is string &&
+             data.uid is string;
+    }
+
+    // ===============================================================
+    // 규칙 정의 (Rules)
+    // ===============================================================
+    match /sales_data/{docId} {
+      // 읽기: 관리자는 전체 조회 가능, 일반 사용자는 본인 데이터만 조회 가능
+      allow read: if isAdmin() || isOwner(resource.data); 
+      
+      // 생성: 본인 UID로만 생성 가능
+      allow create: if isAuthenticated() && 
+                    request.resource.data.uid == request.auth.uid && 
+                    isValidTransaction(request.resource.data);
+      
+      // 수정: 본인 데이터만 수정 가능 (관리자도 가능하게 설정 가능)
+      allow update: if (isAdmin() || isOwner(resource.data)) && 
+                    request.resource.data.uid == resource.data.uid && // UID 변경 불가
+                    isValidTransaction(request.resource.data);
+      
+      // 삭제: 관리자 또는 소유자만 가능
+      allow delete: if isAdmin() || isOwner(resource.data);
+    }
+  }
+}

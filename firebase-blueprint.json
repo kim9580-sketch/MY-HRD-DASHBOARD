@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "판매 거래 데이터 모델",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "description": "주문 고유 ID" },
+        "productName": { "type": "string", "description": "상품명" },
+        "price": { "type": "number", "description": "가격 (원)" },
+        "date": { "type": "string", "format": "date", "description": "거래 날짜 (YYYY-MM-DD)" },
+        "paymentMethod": { "type": "string", "description": "결제 수단" }
+      },
+      "required": ["orderId", "productName", "price", "date", "paymentMethod"]
+    }
+  },
+  "firestore": {
+    "/sales_data/{docId}": {
+      "schema": "Transaction",
+      "description": "모든 판매 거래 내역이 저장되는 컬렉션"
+    }
+  }
+}
