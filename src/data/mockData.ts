@@ -1,4 +1,5 @@
 export interface Transaction {
+  id?: string;
   orderId: string;
   productName: string;
   price: number;

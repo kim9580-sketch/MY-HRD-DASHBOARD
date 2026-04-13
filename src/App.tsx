@@ -138,28 +138,8 @@ export default function App() {
     }
   };
 
-  // 0. Firestore 연결 상태 확인 (Connection Test)
-  // 앱 부팅 시 서버로부터 직접 데이터를 요청하여 연결 상태를 검증합니다.
-  useEffect(() => {
-    const testConnection = async () => {
-      try {
-        // 테스트용 문서 참조 (실제 존재 여부와 상관없이 서버 통신 시도)
-        await getDocFromServer(doc(db, 'sales_data', 'connection_test'));
-        setDbStatus("connected");
-        console.log("Firestore 연결 성공!");
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('offline')) {
-          setDbStatus("error");
-          console.error("Firestore 연결 실패: 클라이언트가 오프라인이거나 설정이 잘못되었습니다.");
-        } else {
-          // 문서가 없는 경우는 연결 성공으로 간주 (서버와 통신은 되었으므로)
-          setDbStatus("connected");
-        }
-      }
-    };
-    testConnection();
-  }, []);
-
+  // 0. Firestore 연결 상태 확인 (삭제됨 - onSnapshot에서 처리)
+  
   // 1. 데이터 시딩 (Seeding) 로직
   // Firestore에 데이터가 없을 경우 mockData를 업로드합니다.
   useEffect(() => {
@@ -205,10 +185,11 @@ export default function App() {
     }
 
     // 관리자는 전체, 일반 사용자는 본인 데이터만 조회
-    let q = query(collection(db, "sales_data"), orderBy("date", "desc"));
+    // 팁: 복합 인덱스 생성을 피하기 위해 서버측 orderBy를 제거하고 클라이언트에서 정렬합니다.
+    let q = query(collection(db, "sales_data"));
     
     if (user && !isAdmin) {
-      q = query(collection(db, "sales_data"), where("uid", "==", user.uid), orderBy("date", "desc"));
+      q = query(collection(db, "sales_data"), where("uid", "==", user.uid));
     }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -217,7 +198,10 @@ export default function App() {
         ...doc.data()
       })) as any[];
       
-      setRawData(data);
+      // 클라이언트 측 정렬 (날짜 내림차순)
+      const sortedData = data.sort((a, b) => b.date.localeCompare(a.date));
+      
+      setRawData(sortedData);
       setLoading(false);
     }, (error) => {
       console.error("Firestore 구독 오류:", error);
@@ -493,31 +477,21 @@ export default function App() {
   };
 
   // 6. 데이터 삭제
-  const handleDelete = async (orderId: string) => {
+  const handleDelete = async (id: string) => {
     if (!window.confirm("정말 이 데이터를 삭제하시겠습니까?")) return;
     
     try {
-      // 팁: 전체 조회가 아닌 본인의 데이터(또는 관리자 권한) 내에서만 검색하여 권한 오류를 방지합니다.
-      let q = query(collection(db, "sales_data"), where("orderId", "==", orderId));
-      if (user && !isAdmin) {
-        q = query(collection(db, "sales_data"), where("orderId", "==", orderId), where("uid", "==", user.uid));
-      }
-      
-      const snapshot = await getDocs(q);
-      const docToDelete = snapshot.docs[0];
-      
-      if (docToDelete) {
-        await deleteDoc(docToDelete.ref);
-        setNotification({ message: "데이터가 삭제되었습니다.", type: "success" });
-      }
+      // 팁: 문서 ID를 직접 사용하여 쿼리 없이 즉시 삭제합니다.
+      await deleteDoc(doc(db, "sales_data", id));
+      setNotification({ message: "데이터가 삭제되었습니다.", type: "success" });
     } catch (error) {
       console.error("삭제 오류:", error);
-      setNotification({ message: "삭제에 실패했습니다.", type: "error" });
+      setNotification({ message: "삭제에 실패했습니다. 권한이 없거나 데이터가 존재하지 않습니다.", type: "error" });
     }
   };
 
   // 7. 데이터 수정
-  const handleEdit = async (orderId: string, currentPrice: number) => {
+  const handleEdit = async (id: string, currentPrice: number) => {
     const newPriceStr = window.prompt("새로운 가격을 입력하세요:", currentPrice.toString());
     if (newPriceStr === null) return;
     
@@ -528,22 +502,12 @@ export default function App() {
     }
 
     try {
-      // 팁: 수정 시에도 본인의 데이터인지 확인하는 쿼리를 사용하여 권한 오류를 방지합니다.
-      let q = query(collection(db, "sales_data"), where("orderId", "==", orderId));
-      if (user && !isAdmin) {
-        q = query(collection(db, "sales_data"), where("orderId", "==", orderId), where("uid", "==", user.uid));
-      }
-      
-      const snapshot = await getDocs(q);
-      const docToUpdate = snapshot.docs[0];
-      
-      if (docToUpdate) {
-        await updateDoc(docToUpdate.ref, { price: newPrice });
-        setNotification({ message: "가격이 수정되었습니다.", type: "success" });
-      }
+      // 팁: 문서 ID를 직접 사용하여 쿼리 없이 즉시 수정합니다.
+      await updateDoc(doc(db, "sales_data", id), { price: newPrice });
+      setNotification({ message: "가격이 수정되었습니다.", type: "success" });
     } catch (error) {
       console.error("수정 오류:", error);
-      setNotification({ message: "수정에 실패했습니다.", type: "error" });
+      setNotification({ message: "수정에 실패했습니다. 권한이 없거나 데이터가 존재하지 않습니다.", type: "error" });
     }
   };
 
@@ -1128,14 +1092,14 @@ export default function App() {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button 
-                              onClick={() => handleEdit(item.orderId, item.price)}
+                              onClick={() => item.id && handleEdit(item.id, item.price)}
                               className="p-1 hover:text-primary transition-colors"
                               title="수정"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button 
-                              onClick={() => handleDelete(item.orderId)}
+                              onClick={() => item.id && handleDelete(item.id)}
                               className="p-1 hover:text-destructive transition-colors"
                               title="삭제"
                             >
